@@ -1,0 +1,14 @@
+{
+  "name": "bay-garage-remote",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phone remote for your automatic garage door",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
