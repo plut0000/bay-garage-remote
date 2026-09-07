@@ -1,12 +1,15 @@
 {
   "name": "bay-garage-remote",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Phone remote for your automatic garage door",
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node server/index.js"
+    "start": "node scripts/start-live.js",
+    "start:ui": "node server/index.js",
+    "start:relay": "node hardware/mock-relay.js",
+    "start:simulate": "DRIVER=simulate node server/index.js",
+    "dev": "node scripts/start-live.js"
   },
   "engines": {
     "node": ">=18"

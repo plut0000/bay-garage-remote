@@ -1,60 +1,83 @@
 # Bay — phone remote for your garage
 
-Control your automatic garage door from your phone. Bay is a passcode-locked remote that runs on your home network and can trigger real hardware through a webhook.
+Control your automatic garage door from your phone. Bay unlocks with a passcode, then pulses a relay that acts like your wall button.
 
-## Important
+## Does it actually open the door?
 
-- This is for **your own** garage.
-- Do **not** put your real passcode in git. Set it in `.env` only.
-- A phone app alone cannot open a garage. You need a small controller that presses the wall-button circuit (or a smart opener integration).
+**Software path: yes.** `npm start` runs Bay + a local relay controller. Open/Close on your phone hits the relay API (you’ll see `★ PULSE` in the terminal).
 
-## Quick start (demo mode)
+**Physical garage: yes, after one-time wiring.** Flash the included ESP32 sketch, connect a relay across your opener’s wall-button terminals, point `ESP_URL` at the ESP’s IP. Same API as the mock — no app changes.
+
+## Quick start (working live demo)
 
 ```bash
 cp .env.example .env
-# edit GARAGE_PIN in .env
 npm start
 ```
 
-Open `http://<your-computer-lan-ip>:8787` on your phone (same Wi‑Fi).
+Open `http://<your-computer-lan-ip>:8787` on your phone (same Wi‑Fi).  
+Default PIN: `1234` (change `GARAGE_PIN`).
 
-Default demo PIN is `1234` until you change `GARAGE_PIN`.
+You should see **Controller online** after unlock. Tapping Open prints a relay pulse in the terminal.
 
 ### Add to home screen
 
-On iPhone/Android, open Bay in the browser → Share / menu → **Add to Home Screen**. It launches like an app.
+iPhone/Android → Share / menu → **Add to Home Screen**.
 
-## Wire it to a real opener
+## Make it control your real garage
 
-Most automatic openers have a wall button that simply shorts two low-voltage terminals. A relay or dry-contact smart module can mimic that press.
+### Parts
+- ESP32 board (~$5–10)
+- 1-channel relay module
+- 2 wires to the opener wall-button screws
 
-### Option A — Home Assistant / Shelly / ESP webhook (recommended with this app)
+### Wiring
+1. **Kill power** to the opener first.
+2. Relay **COM** and **NO** → the two wall-button terminals on the opener (parallel with the existing indoor button — don’t remove it).
+3. Relay input → ESP32 `GPIO 26` (or change `RELAY_PIN` in the sketch), plus VCC/GND per your module.
 
-1. Install a dry-contact device across the opener’s wall-button terminals (Shelly 1, ESP32 + relay, etc.).
-2. Create an automation or HTTP endpoint that pulses the relay (~0.5s).
-3. In `.env`:
-
-```env
-DRIVER=webhook
-WEBHOOK_URL=https://homeassistant.local:8123/api/webhook/your-garage-hook
-WEBHOOK_OPEN_BODY={"action":"open"}
-WEBHOOK_CLOSE_BODY={"action":"close"}
-WEBHOOK_TOGGLE_BODY={"action":"toggle"}
-WEBHOOK_HEADERS={"Authorization":"Bearer YOUR_TOKEN"}
+```
+[ESP32] -----> [Relay IN]
+                 COM ●--------● Opener wall terminal A
+                 NO  ●--------● Opener wall terminal B
 ```
 
-If your hardware only supports a single “press” (like the wall button), point open/close/toggle at the same pulse endpoint and rely on the opener’s toggle behavior.
+Classic openers only **toggle**. Open and Close in Bay both pulse the same button; keep the door in view when you use it.
 
-### Option B — ratgdo (Chamberlain / LiftMaster Security+ 2.0)
+### Flash the ESP32
+1. Arduino IDE → ESP32 board package  
+2. Open `hardware/esp32-bay-relay/esp32-bay-relay.ino`  
+3. Set `WIFI_SSID`, `WIFI_PASS`, `DEVICE_KEY`  
+4. Upload; Serial Monitor (115200) shows the IP  
 
-Many modern Chamberlain/LiftMaster units need [ratgdo](https://github.com/ratgdo/esp8266) instead of a simple relay. Expose it to Home Assistant, then point Bay’s webhook at that automation.
+### Point Bay at the ESP
 
-### Safety notes
+```env
+DRIVER=esp
+ESP_URL=http://192.168.1.50
+DEVICE_KEY=bay-dev-key
+GARAGE_PIN=your-strong-pin
+```
 
-- Disconnect power before wiring terminals.
-- Keep Bay on your LAN or behind a VPN (Tailscale, WireGuard). Do not expose port 8787 to the public internet.
-- Use a strong `GARAGE_PIN` and change it from the default.
+Then `npm start` (or `npm run start:ui` if you don’t need the mock relay).
+
+### Chamberlain / LiftMaster Security+ 2.0
+A dry-contact relay often won’t work. Use [ratgdo](https://github.com/ratgdo/esp8266) + Home Assistant, then set `DRIVER=webhook`.
+
+## Safety
+- Disconnect power before wiring.
+- LAN or VPN only — do not expose ports 8787/8788 to the public internet.
+- Change `GARAGE_PIN` and `DEVICE_KEY` from defaults.
 - Sessions expire after `SESSION_HOURS` (default 12).
+
+## Scripts
+
+| Command | What it runs |
+|---------|----------------|
+| `npm start` | Mock relay + Bay (`DRIVER=esp`) — full working stack |
+| `npm run start:ui` | Bay only |
+| `npm run start:relay` | Mock relay only |
+| `npm run start:simulate` | UI demo with no relay |
 
 ## API
 
@@ -62,11 +85,11 @@ Many modern Chamberlain/LiftMaster units need [ratgdo](https://github.com/ratgdo
 |--------|------|------|---------|
 | POST | `/api/unlock` | no | `{ "pin": "...." }` → session token |
 | POST | `/api/lock` | yes | End session |
-| GET | `/api/status` | optional | Door state + auth flag |
+| GET | `/api/status` | optional | Door state + hardware probe |
+| GET | `/api/hardware` | yes | Relay controller health |
 | POST | `/api/command` | yes | `{ "action": "open" \| "close" \| "toggle" }` |
 
-Send `Authorization: Bearer <token>` after unlock.
+Relay device API (mock or ESP32): `POST /open|/close|/toggle|/pulse` with header `X-Bay-Key`.
 
-## Away-from-home access
-
-Use Tailscale/WireGuard to reach your home server, then open Bay’s URL on your phone. That keeps the passcode gate and avoids opening the garage port to the world.
+## Away-from-home
+Use Tailscale/WireGuard to reach your home server, then open Bay on your phone.
