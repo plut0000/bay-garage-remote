@@ -1,0 +1,17 @@
+{
+  "name": "Bay",
+  "short_name": "Bay",
+  "description": "Phone remote for your garage door",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EBE6DD",
+  "theme_color": "#E6E2DA",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
