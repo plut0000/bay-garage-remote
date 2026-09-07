@@ -10,6 +10,7 @@
   const statusLabel = document.getElementById("status-label");
   const remoteMsg = document.getElementById("remote-msg");
   const lockBtn = document.getElementById("lock-btn");
+  const hwStatus = document.getElementById("hw-status");
 
   let token = localStorage.getItem(TOKEN_KEY) || "";
   let busy = false;
@@ -33,6 +34,7 @@
       localStorage.setItem(TOKEN_KEY, token);
       pinInput.value = "";
       showRemote(data.state || "closed");
+      updateHardware(data.hardware);
     } catch (err) {
       lockError.textContent = err.message || "Could not unlock";
       lockError.hidden = false;
@@ -70,6 +72,7 @@
         return;
       }
       showRemote(status.state);
+      updateHardware(status.hardware);
     } catch {
       showLock();
     }
@@ -131,6 +134,7 @@
         return null;
       }
       setDoorState(status.state);
+      updateHardware(status.hardware);
       return status;
     } catch {
       return null;
@@ -147,6 +151,25 @@
     lockScreen.hidden = true;
     remoteScreen.hidden = false;
     setDoorState(state);
+  }
+
+  function updateHardware(hardware) {
+    if (!hwStatus) return;
+    if (!hardware) {
+      hwStatus.textContent = "Controller status unknown";
+      hwStatus.className = "hw-status";
+      return;
+    }
+    if (hardware.connected) {
+      hwStatus.textContent =
+        hardware.mode === "simulate"
+          ? "Demo mode (no physical relay)"
+          : `Controller online · ${hardware.detail || hardware.mode}`;
+      hwStatus.className = "hw-status online";
+    } else {
+      hwStatus.textContent = `Controller offline · ${hardware.detail || "check wiring"}`;
+      hwStatus.className = "hw-status offline";
+    }
   }
 
   function setDoorState(state) {
