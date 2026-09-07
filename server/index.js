@@ -66,13 +66,24 @@ async function handleApi(req, res, url) {
 
   if (url.pathname === "/api/status" && req.method === "GET") {
     const authed = isAuthed(req);
+    const hardware = authed ? await probeHardware() : null;
     sendJson(res, 200, {
       ok: true,
       authenticated: authed,
       state: authed ? doorState : "locked",
       driver: DRIVER,
       lastActionAt,
+      hardware,
     });
+    return;
+  }
+
+  if (url.pathname === "/api/hardware" && req.method === "GET") {
+    if (!isAuthed(req)) {
+      sendJson(res, 401, { error: "Unlock required" });
+      return;
+    }
+    sendJson(res, 200, await probeHardware());
     return;
   }
 
@@ -90,6 +101,7 @@ async function handleApi(req, res, url) {
       token,
       state: doorState,
       expiresInMs: SESSION_MS,
+      hardware: await probeHardware(),
     });
     return;
   }
@@ -145,9 +157,10 @@ async function runCommand(action) {
   }
 
   clearTimeout(actionTimer);
+  const settleMs = Number(process.env.SETTLE_MS || (DRIVER === "simulate" ? 2200 : 2500));
   actionTimer = setTimeout(() => {
     doorState = resolved === "open" ? "open" : "closed";
-  }, DRIVER === "simulate" ? 2200 : 12000);
+  }, settleMs);
 
   return { ok: true, state: doorState, action: resolved };
 }
@@ -155,6 +168,27 @@ async function runCommand(action) {
 async function dispatchHardware(action) {
   if (DRIVER === "simulate") {
     console.log(`[simulate] garage ${action}`);
+    return;
+  }
+
+  if (DRIVER === "esp") {
+    const base = (process.env.ESP_URL || "").replace(/\/$/, "");
+    if (!base) throw new Error("ESP_URL is not set");
+    const key = process.env.DEVICE_KEY || "";
+    const pathName = action === "open" || action === "close" || action === "toggle" ? `/${action}` : "/pulse";
+    const response = await fetch(`${base}${pathName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Bay-Key": key,
+      },
+      body: JSON.stringify({ ms: Number(process.env.PULSE_MS || 500), action }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`ESP relay error ${response.status}: ${text.slice(0, 160)}`);
+    }
+    console.log(`[esp] pulsed ${action} via ${base}`);
     return;
   }
 
@@ -185,7 +219,40 @@ async function dispatchHardware(action) {
     return;
   }
 
-  throw new Error(`Unsupported DRIVER "${DRIVER}". Use simulate or webhook.`);
+  throw new Error(`Unsupported DRIVER "${DRIVER}". Use simulate, esp, or webhook.`);
+}
+
+async function probeHardware() {
+  if (DRIVER === "simulate") {
+    return { connected: true, mode: "simulate", detail: "Demo mode — no physical relay" };
+  }
+  if (DRIVER === "esp") {
+    const base = (process.env.ESP_URL || "").replace(/\/$/, "");
+    if (!base) return { connected: false, mode: "esp", detail: "ESP_URL missing" };
+    try {
+      const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(2500) });
+      if (!response.ok) {
+        return { connected: false, mode: "esp", detail: `Health ${response.status}` };
+      }
+      const data = await response.json();
+      return {
+        connected: true,
+        mode: "esp",
+        detail: data.device || "relay online",
+        url: base,
+      };
+    } catch (err) {
+      return { connected: false, mode: "esp", detail: err.message, url: base };
+    }
+  }
+  if (DRIVER === "webhook") {
+    return {
+      connected: Boolean(process.env.WEBHOOK_URL),
+      mode: "webhook",
+      detail: process.env.WEBHOOK_URL ? "Webhook configured" : "WEBHOOK_URL missing",
+    };
+  }
+  return { connected: false, mode: DRIVER, detail: "Unknown driver" };
 }
 
 function issueSession() {
