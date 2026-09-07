@@ -208,8 +208,8 @@ body {
   margin-top: 14px;
   text-align: center;
   font-size: 0.92rem;
-  color: var(--muted);
   font-weight: 600;
+  color: var(--muted);
 }
 
 .hw-status.online {
